@@ -1,0 +1,14 @@
+{
+  "//": "Add the `chess` entry below into your real claude_desktop_config.json, then restart Claude Desktop.",
+  "//config_location_macos": "~/Library/Application Support/Claude/claude_desktop_config.json",
+  "//note": "Use ABSOLUTE paths. After running setup.sh, the interpreter is <this folder>/venv/bin/python",
+  "mcpServers": {
+    "chess": {
+      "command": "/ABSOLUTE/PATH/TO/chess-games/venv/bin/python",
+      "args": ["/ABSOLUTE/PATH/TO/chess-games/chess_mcp.py"],
+      "env": {
+        "STOCKFISH_PATH": "stockfish"
+      }
+    }
+  }
+}

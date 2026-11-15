@@ -1,0 +1,33 @@
+{
+  "description": "Objective evaluations (centipawns, White's point of view) per half-move, from a full-strength Stockfish depth-12 analysis of each position in the 4-game ladder. Positive = good for Claude (White). The 'blunder_ply' is the half-move after which the eval fell off a cliff.",
+  "games": {
+    "1350": {
+      "result": "0-1 (Claude resigned)",
+      "peak_cp": 897,
+      "blunder": "16.Nc7+?? Bxc7 (unsound fork; d8-bishop defended the square)",
+      "blunder_ply": 30,
+      "evals_cp": [26,78,67,166,152,136,82,123,126,161,112,301,385,419,207,606,572,739,627,741,756,897,806,815,757,767,622,615,539,547,-308,-297,-354,-286,-368,-302,-332,-241,-418,-430,-418,-290,-302,-332,-559,-526,-567,-584,-599,-599,-699,-678,-756,-690,-668,-693,-746,-653]
+    },
+    "1800": {
+      "result": "0-1 (Claude resigned)",
+      "peak_cp": 493,
+      "blunder": "18.Bf3?? exf3 (hung the bishop to the e4-pawn)",
+      "blunder_ply": 34,
+      "evals_cp": [26,78,67,67,72,71,46,98,100,287,63,53,176,153,-97,-120,-123,-26,17,24,38,493,19,-6,-232,-22,-46,-30,-284,-113,-112,-113,-253,11,-782,-798,-845,-767]
+    },
+    "2200": {
+      "result": "0-1 (Claude resigned)",
+      "peak_cp": 308,
+      "blunder": "21.Rxb6?? (traded off the defensive rook; unleashed Black's attack)",
+      "blunder_ply": 40,
+      "evals_cp": [26,52,36,35,13,25,30,141,67,66,35,95,94,113,184,198,79,201,168,201,254,308,120,133,142,200,141,308,114,98,93,127,105,164,108,124,98,103,115,224,-677,-603,-648,-619,-690,-654]
+    },
+    "2600": {
+      "result": "0-1 (Claude resigned)",
+      "peak_cp": 94,
+      "blunder": "12.c3?? c5 (defended a pinned knight with a pawn; ...c5 won it)",
+      "blunder_ply": 22,
+      "evals_cp": [26,52,36,49,44,49,56,48,45,68,48,85,70,94,82,75,30,11,19,14,29,19,-465,-495,-551,-477,-561,-533]
+    }
+  }
+}
