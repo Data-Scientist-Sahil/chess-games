@@ -1,84 +1,113 @@
-# chess-games — Claude vs Stockfish
+# chess-games
 
-Everything from the "play Stockfish against Claude" experiment, plus a proper
-MCP server so your **Claude Desktop** app can play real games itself.
+**Claude vs Stockfish: an MCP server and evaluation harness for measuring how a frontier LLM plays chess against a strength-limited engine.**
 
-> **Honesty note on where it ran.** The original 4-game ladder (1350 → 1800 →
-> 2200 → 2600) was **not** run on your Mac. It ran in a cloud Linux workspace,
-> where I (Claude) drove a small UCI harness move-by-move and a from-source
-> Stockfish answered. That harness (`engine_game.py`) is included here exactly
-> as used. The `chess_mcp.py` server is the thing you originally asked about —
-> it lets your *desktop* app play — and is new in this folder. The Stockfish
-> binary from the cloud run was a **Linux x86-64** build and will not run on
-> macOS, so it is intentionally **not** copied here; `setup.sh` installs the
-> correct macOS build via Homebrew.
+A language model picks its own moves from a text board. Stockfish, capped at a chosen Elo, answers each one. A separate full-strength Stockfish scores every position, so each game produces a per-move evaluation curve that shows exactly where the model's play breaks down.
 
 ---
 
-## Contents
+## Why
 
-| File | What it is |
-|---|---|
-| `chess_mcp.py` | **The MCP server.** Tools: `new_game`, `get_board`, `play_move`, `pgn`. Owns the board + Stockfish so the match is fair. |
-| `engine_game.py` | The CLI harness used for the actual ladder. Subcommands: `new <id> <elo>`, `mymove <id> <SAN>`, `pgn <id>`. State persisted to `<id>.json`. |
-| `requirements.txt` | Python deps: `chess`, `mcp`. |
-| `setup.sh` | One-time macOS setup: `brew install stockfish` + a `venv` with the deps. |
-| `claude_desktop_config.example.json` | The `mcpServers` snippet to paste into your real Claude Desktop config. |
-| `evals.json` | Per-move objective evals (centipawns, White POV) + blunder markers for all 4 games. |
-| `games/*.pgn` | The four games. Paste any into <https://lichess.org/paste> to replay. |
+Public LLM chess leaderboards report a single rating. This project asks a more useful question: *at what point, and why, does an LLM lose a position?* Recording an objective centipawn evaluation after every half-move turns each game into a diagnostic trace, not just a result.
 
----
+## Architecture
 
-## Quick start (macOS)
-
-```bash
-cd chess-games
-chmod +x setup.sh
-./setup.sh                 # installs stockfish + builds ./venv
+```mermaid
+flowchart LR
+    A[Claude Desktop / LLM client] -- MCP over stdio --> B[chess_mcp.py]
+    B -- python-chess --> C[(Board state)]
+    B -- UCI, UCI_LimitStrength + UCI_Elo --> D[Stockfish opponent]
+    B -- UCI, depth 12 --> E[Stockfish evaluator]
 ```
 
-### A) Let Claude Desktop play (the MCP server)
+- **The server owns the board and the engine.** The model never sees engine analysis for its own move. It gets the position, the legal moves and an evaluation for context, so the match stays fair.
+- **Every move is checked for legality** with `python-chess` (`parse_san`). Illegal moves are rejected and the server returns the list of legal moves.
+- **Two engine roles.** An Elo-limited Stockfish plays the opponent (`UCI_LimitStrength`, `UCI_Elo`, 0.3 s per move), and a full-strength Stockfish at depth 12 produces the objective evaluation.
+- **UCI is handled by `python-chess`** (`chess.engine.SimpleEngine.popen_uci`), so the only external dependency is a Stockfish binary.
 
-1. Open your Claude Desktop config:
-   `~/Library/Application Support/Claude/claude_desktop_config.json`
-2. Merge in the `chess` server from `claude_desktop_config.example.json`,
-   replacing `/ABSOLUTE/PATH/TO/chess-games` with this folder's real path and
-   pointing `command` at `./venv/bin/python`.
-3. Fully quit and reopen Claude Desktop.
-4. In a chat, say:
-   > Start a new game as White vs Stockfish at 1500 Elo. Before each move call
-   > `get_board`, think it through, then call `play_move`. Keep going until the
-   > game ends. Don't ask me anything between moves.
+## Repository layout
 
-`STOCKFISH_PATH` defaults to `stockfish` (on PATH after `brew install`). Override
-it in the config `env` if your binary lives elsewhere.
+| Path | Purpose |
+|---|---|
+| `chess_mcp.py` | MCP server exposing `new_game`, `get_board`, `play_move` and `pgn` to any MCP client (e.g. Claude Desktop). |
+| `engine_game.py` | Stateless CLI harness (`new` / `mymove` / `pgn`) with per-game JSON state, used to run the Elo ladder. |
+| `setup.sh` | One-command macOS setup: installs Stockfish via Homebrew and builds a Python venv. |
+| `requirements.txt` | Python dependencies (`chess`, `mcp`). |
+| `claude_desktop_config.example.json` | `mcpServers` snippet for registering the server in Claude Desktop. |
+| `games/*.pgn` | The four ladder games. |
+| `evals.json` | Per-half-move centipawn evaluations, peak advantage and the decisive mistake for each game. |
 
-### B) Reproduce the ladder yourself (the CLI harness)
+## Quick start
+
+**Requirements:** macOS with [Homebrew](https://brew.sh) and Python 3.10+. On Linux, install Stockfish with your package manager and run `pip install -r requirements.txt`.
+
+```bash
+git clone https://github.com/Data-Scientist-Sahil/chess-games.git
+cd chess-games
+chmod +x setup.sh
+./setup.sh
+```
+
+### Option A: let Claude Desktop play (MCP server)
+
+1. Open `~/Library/Application Support/Claude/claude_desktop_config.json`.
+2. Merge in the `chess` entry from `claude_desktop_config.example.json`. Replace `/ABSOLUTE/PATH/TO/chess-games` with the repository's absolute path, so that `command` points at `venv/bin/python` and `args` points at `chess_mcp.py`.
+3. Fully quit and reopen Claude Desktop. The `chess` tools should appear in the tools menu.
+4. Start a game with a prompt like:
+
+   > Start a new game as White against Stockfish at 1500 Elo. Before each move, call `get_board`, think it through, then call `play_move`. Continue until the game ends without asking me anything. Then call `pgn`.
+
+| Tool | Description |
+|---|---|
+| `new_game(color, elo)` | Starts a game. `color` is the model's side; `elo` is Stockfish's strength (clamped to 1320–3190). |
+| `get_board()` | Board diagram, FEN, legal moves in SAN, objective evaluation. |
+| `play_move(san)` | Validates and plays the model's move; Stockfish replies automatically. |
+| `pgn()` | Full game as PGN. Paste into [lichess.org/paste](https://lichess.org/paste) to replay. |
+
+### Option B: run the CLI harness
 
 ```bash
 source venv/bin/activate
-python engine_game.py new mygame 1500      # new game vs Stockfish @1500, you are White
-python engine_game.py mymove mygame e4     # you play e4; Stockfish replies; prints board + eval
-python engine_game.py mymove mygame Nf3
-python engine_game.py pgn mygame           # dump the PGN so far
+python engine_game.py new demo 1500     # new game, you are White, Stockfish at 1500
+python engine_game.py mymove demo e4    # play e4; Stockfish replies; prints board + eval
+python engine_game.py pgn demo          # PGN plus the evaluation list
 ```
 
-The harness uses **two** engine instances on purpose: an Elo-limited one to make
-the opponent's moves, and a separate full-strength one (depth 12) to score each
-position objectively — that's where `evals.json` comes from.
+### Configuration
 
----
+| Variable | Default | Used by |
+|---|---|---|
+| `STOCKFISH_PATH` | `stockfish` (on `PATH` after `brew install`) | both scripts |
+| `GAME_DIR` | `./game_state` | `engine_game.py` |
 
-## The result (tl;dr)
+## Results: Elo ladder (2026-11-14)
 
-Claude lost all four games, but the engine's strength was barely the reason: in
-every game Claude reached an equal-or-winning position (**+9** vs the 1350!) and
-then lost it in a **single move**. Opening play was sound every time; each loss
-came from one move that looked right but skipped a concrete tactical check (an
-undefended fork square, a pawn capture, a pin). See `evals.json` for the exact
-cliff in each game.
+One game per level, with Claude (labelled *Opus 4.8* in the harness) as White against Stockfish at four strengths. Evaluations are in pawns from White's point of view, from a full-strength Stockfish at depth 12.
 
-Why: an LLM plays from pattern recognition over text (great intuition, strongest
-in the heavily-recorded opening) but is an unreliable *verifier* of the one
-concrete line that refutes a plausible move. Pair it with a checker — in chess,
-literally Stockfish — and you get the best of both.
+| Stockfish Elo | Moves | Peak advantage | Decisive mistake | Outcome |
+|---|---|---|---|---|
+| 1350 | 29 | **+8.97** | `16.Nc7+?` – unsound fork, the square was covered by the d8 bishop | Resigned |
+| 1800 | 19 | +4.93 | `18.Bf3?` – hung the bishop to the e4 pawn | Resigned |
+| 2200 | 23 | +3.08 | `21.Rxb6?` – traded off the key defensive rook | Resigned |
+| 2600 | 14 | +0.94 | `12.c3?` – defended a pinned knight with a pawn; `...c5` won it | Resigned |
+
+The PGN files carry the result tag `*` because each game was stopped by resignation, not played to checkmate.
+
+### Findings
+
+- **The opening play was sound in every game.** The model reached an equal or winning position against all four opponents, including a near-decisive +9 against the 1350 engine.
+- **Each game was lost in a single move.** The evaluation curve stays positive and then drops by 4 to 9 pawns in one half-move, every time.
+- **The failure mode was the same each time:** a plausible move whose refutation was one concrete tactical line (a covered fork square, a pawn capture, a pin).
+- **Interpretation:** the model plays from strong pattern intuition but is an unreliable verifier of forcing lines. That suggests a generator-plus-verifier design, where an LLM proposes and a search engine checks. The same pattern applies to LLM agents outside chess.
+
+**Limitations:** one game per level, a single colour and a single model, so this is a diagnostic study, not a rating. A robust estimate needs several games per level with alternating colours.
+
+## Roadmap
+
+- Multi-game support (a `game_id` per session) so several chats can play in parallel.
+- Batch runner over the API with alternating colours, and an Elo estimate with confidence intervals.
+- Optional tool that lets the model request a blunder check before committing a move, to measure how much a verifier helps.
+
+## License
+
+MIT
